@@ -43,12 +43,14 @@ class Application(tk.Frame):
                                      command=lambda: self.exit())
         self.button_exit.grid(row=3, column=3, sticky="nsew")
         self.update_clock()
+        self.master.bind('<v>', self.add_video)
+        self.master.bind('<i>', self.add_image)
         self.master.bind('<o>', self.open_file)
         self.master.bind('<Delete>', self.delete_file)
         self.master.bind('<Escape>', self.exit)
 
     # Загрузка видео файла
-    def add_video(self):
+    def add_video(self, event=None):
         video_path = filedialog.askopenfilename(initialdir=dir, title="Select VIDEO",
                                                 filetypes=[("ALL files", ' '
                                                             .join('*.' + ext for ext in ("avi", "mp4", "mkv", "flv", "wmv"))),
@@ -66,10 +68,10 @@ class Application(tk.Frame):
             self.list_box.insert(0, video_path)
             self.video_path = video_path
             self.video_name = os.path.basename(self.video_path)
-            print(video_path + " LOADED")
+            print(video_path + " loaded")
 
     # Загрузка изображения
-    def add_image(self):
+    def add_image(self, event=None):
         image_path = filedialog.askopenfilename(initialdir=dir, title="Select IMAGE",
                                                 filetypes=[("ALL files", ' '
                                                             .join('*.' + ext for ext in ("png", "jpg", "jpeg", "bmp", "gif"))),
@@ -86,14 +88,14 @@ class Application(tk.Frame):
             self.list_box.insert(tk.END, image_path)
             self.image_path = image_path
             self.image_name = os.path.basename(self.image_path)
-            print(image_path + " LOADED")
+            print(image_path + " loaded")
 
     # Открытие файла
     def open_file(self, event=None):
         try:
             selection = self.list_box.curselection()
             if self.list_box.get(selection) == self.video_path:
-                print(self.video_path + " OPEN")
+                print(self.video_path + " opening")
                 cap = cv2.VideoCapture(self.video_path)
                 fps = cap.get(cv2.CAP_PROP_FPS)
                 success, frame = cap.read()
@@ -106,7 +108,7 @@ class Application(tk.Frame):
                 cap.release()
                 cv2.destroyAllWindows()
             if self.list_box.get(selection) == self.image_path:
-                print(self.image_path + " OPEN")
+                print(self.image_path + " opening")
                 image = cv2.imread(self.image_path)
                 cv2.imshow(self.image_name, image)
                 key = cv2.waitKey(0)
@@ -127,7 +129,7 @@ class Application(tk.Frame):
             elif filepath == self.image_path:
                 self.image_path = None
             self.list_box.delete(i)
-            print(filepath + " DELETED")
+            print(filepath + " deleted")
 
     # Симуляция грязи на видеофайле в режиме оннлайн
     def simulation(self, event=None):
@@ -139,12 +141,13 @@ class Application(tk.Frame):
         mud_video_name = "mud_" + self.video_name
         # Текстовый файл, в котором будут храниться данные
         data_file = path + "/" + "data" + ".txt"
-        c = 64
-        lighting = 128
         step = 5
-        is_mud_masking = False
-        is_video_recording = False
-        is_record_to_file = True
+        brightness_video = 128
+        brightness_mud = 64
+        do_mud_masking = False
+        can_video_recording = False
+        can_record_to_file = True
+        do_hide_text = False
         record_counter = 0
         cap = cv2.VideoCapture(self.video_path)
         # Чтение кадра из видеофайла
@@ -157,14 +160,16 @@ class Application(tk.Frame):
         # Размытие наложенного изображения по Гауссиану
         image_overlay = cv2.GaussianBlur(image_overlay, (0, 0), 1.8)
         image_overlay_copy = image_overlay.copy()
-        a = np.min(image_overlay)
-        b = np.max(image_overlay)
-        threshold = b
+        # Минимальное значение пикселя на кадре
+        min_pixel = np.min(image_overlay)
+        # Максимальное значение пикселя на кадре
+        max_pixel = np.max(image_overlay)
+        threshold = max_pixel
         # Кодек видео
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
         video = cv2.VideoWriter(mud_video_path, fourcc, cap.get(cv2.CAP_PROP_FPS), (frame_height, frame_width))
+        # Размер окна и расположение
         cv2.namedWindow(mud_video_name, cv2.WINDOW_AUTOSIZE)
-        # Сделать окно по центру экрана
         cv2.moveWindow(mud_video_name, 0, 0)
         # Проверка на открытие видеофайла
         if not is_frame:
@@ -173,104 +178,138 @@ class Application(tk.Frame):
         while True:
             modify = False
             key = cv2.waitKey(dt)
+            # Загрузка данных из текстового файла
             if key == ord('r'):
-                ~is_record_to_file
-                if is_record_to_file:
+                ~can_record_to_file
+                if can_record_to_file:
                     try:
-                        count = 0
                         data_from_file = np.uint8([])
                         file = open(data_file, "r")
+                        # Чтение данных
                         if os.stat(data_file).st_size:
                             for line in file:
                                 if not line == "\n":
-                                    data_from_file = np.append(data_from_file, np.array([int(s) for s in line.split()
-                                                                                         if s.isdigit()]))
-                                    print("pressed R, Read from {}, threshold = {data[0]}, c = {data[1]}, d = {data[2]}"
-                                          .format(data_file, data=data_from_file))
-                                    count += 3
+                                    data = np.append(data, np.array([int(s) for s in line.split() if s.isdigit()]))
+                                    print("Pressed R, Read from {}, threshold = {data[0]}, c = {data[1]}, d = {data[2]}"
+                                          .format(data_file, data=data))
                             file.close()
-                            is_record_to_file = False
+                            can_record_to_file = False
                         else:
-                            print("FILE is EMPTY!")
+                            print("File is empty!")
                     except IOError:
-                        print("Could not OPEN FILE!")
+                        print("Could not open file!")
                 else:
-                    threshold = data_from_file[record_counter]
-                    c = data_from_file[1 + record_counter]
-                    d = data_from_file[2 + record_counter]
-                    print("pressed double R, read from DATA, threshold = {}, c = {}, d = {}".format(threshold, c, d))
+                    threshold = data[record_counter]
+                    brightness_mud = data[1 + record_counter]
+                    brightness_video = data[2 + record_counter]
+                    print("Pressed double R, read from data, threshold = {}, c = {}, d = {}"
+                          .format(threshold, brightness_mud, brightness_video))
                     record_counter += 3
-                    if record_counter >= len(data_from_file):
+                    if record_counter >= len(data):
                         record_counter = 0
+            if key == ord('h'):
+                do_hide_text ^= 1
+                if do_mud_masking:
+                    do_mud_masking = True
+                    print("Pressed H, the text is visible")
+                else:
+                    do_mud_masking = False
+                    print("Pressed H, the text is hidden")
+
             # Наложение / удаление грязи
             if key == ord('x'):
-                is_mud_masking ^= 1
-                if is_mud_masking:
-                    print("pressed x, MUD")
+                do_mud_masking ^= 1
+                if do_mud_masking:
+                    print("Pressed X, mud")
                 else:
-                    print("pressed x, CLEAN")
+                    print("Pressed X, clean")
             # Выход
             if key == 27:
-                print("pressed BREAK")
+                print("Pressed ESC")
                 break
             # Пауза
             if key == 32:
-                print("pressed PAUSE")
+                print("Pressed pause")
                 key = cv2.waitKey(0)
+            # Увеличение порога яркости
             if key == ord('w') and threshold <= 255 - step:
                 threshold += step
-                print("pressed w, threshold = ", threshold)
+                print("Pressed W, threshold = ", threshold)
+            # Уменьшение порога яркости
             if key == ord('s') and threshold >= 0 + step:
                 threshold -= step
-                print("pressed s, threshold =", threshold)
-            if key == ord('d') and lighting <= 255 - step:
+                print("Pressed S, threshold =", threshold)
+            # Увеличение яркости видео
+            if key == ord('d') and brightness_video <= 255 - step:
                 modify = True
-                lighting += step
-                print("pressed d, lighting =", lighting)
-            if key == ord('a') and lighting - step > c:
+                brightness_video += step
+                print("Pressed D, brightness video =", brightness_video)
+            # Уменьшение яркости видео
+            if key == ord('a') and brightness_video - step > brightness_mud:
                 modify = True
-                lighting -= step
-                print("pressed a, lighting = ", lighting)
-            if key == ord('g') and c + step < lighting:
+                brightness_video -= step
+                print("Pressed A, brightness video = ", brightness_video)
+            # Увеличение яркости грязи
+            if key == ord('g') and brightness_mud + step < brightness_video:
                 modify = True
-                c += step
-                print("pressed g, c =", c)
-            if key == ord('f') and c >= 0 + step:
+                brightness_mud += step
+                print("Pressed G, brightness mud = ", brightness_mud)
+            # Уменьшение яркости грязи
+            if key == ord('f') and brightness_mud >= 0 + step:
                 modify = True
-                c -= step
-                print("pressed f, c = ", c)
+                brightness_mud -= step
+                print("Pressed F, brightness mud = ", brightness_mud)
+            # Изменение кадра
             if modify:
-                image_overlay = ((lighting - c) / (b - a)) * (image_overlay_copy - a) + c
+                image_overlay = ((brightness_video - brightness_mud) / (max_pixel - min_pixel)) * \
+                                (image_overlay_copy - min_pixel) + brightness_mud
                 image_overlay = image_overlay.astype(np.uint8)
-            if is_mud_masking:
+            # Наложение маски на изображение
+            if do_mud_masking:
+                # Вычисление маски изображения
                 ret, mask = cv2.threshold(image_overlay, threshold, threshold, cv2.THRESH_TRUNC)
                 mask = threshold - mask
-                dst = cv2.subtract(image, mask)
+                image = cv2.subtract(frame, mask)
             else:
-                dst = image
-            if is_video_recording:
-                video.write(dst)
-            cv2.imshow(mud_video_name, dst)
+                image = frame
+            # Запись видео
+            if can_video_recording:
+                video.write(image)
+            if not do_hide_text:
+                # Фон
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                # org
+                org = (frame_width - 100, frame_height - 100)
+                # fontScale
+                fontScale = 1
+                # Blue color in BGR
+                color = (255, 0, 0)
+                # Line thickness of 2 px
+                thickness = 2
+                # Using cv2.putText() method
+                image = cv2.putText(image, 'OpenCV', org, font, fontScale, color, thickness, cv2.LINE_AA)
+            cv2.imshow(mud_video_name, image)
+            # Запись / остановка записи видео
             if key == 13:
-                is_video_recording ^= 1
-                if is_video_recording:
-                    video.write(dst)
-                    print("pressed ENTER, video recording to {}".format(mud_video_path))
+                can_video_recording ^= 1
+                if can_video_recording:
+                    video.write(image)
+                    print("Pressed ENTER, video recording to {}".format(mud_video_path))
                 else:
                     video.release()
-                    data_to_file = np.uint8([threshold, c, lighting])
+                    data = np.uint8([threshold, brightness_mud, brightness_video])
                     file = open(data_file, "a")
-                    file.write(' '.join(["{}".format(item) for item in data_to_file]))
+                    file.write(' '.join(["{}".format(item) for item in data]))
                     file.write("\n")
                     file.close()
-                    print("pressed ENTER, video stop recorded; data recorded to {}, parameters: threshold = {data[0]}, "
-                          "c = {data[1]}, d = {data[2]}".format(data_file, data=data_to_file))
-                    is_record_to_file = True
-            is_frame, image = cap.read()
+                    print("Pressed ENTER, video stop recorded; data recorded to {}, parameters: threshold = {data[0]}, "
+                          "c = {data[1]}, d = {data[2]}".format(data_file, data=data))
+                    can_record_to_file = True
+            is_frame, frame = cap.read()
             if not is_frame:
                 cap.release()
                 cap.open(self.video_path)
-                is_frame, image = cap.read()
+                is_frame, frame = cap.read()
                 if not is_frame:
                     break
 
@@ -323,7 +362,7 @@ def main():
     # Смещение от середины
     width = width - 200
     height = height - 200
-    root.title("Choose FILES")
+    root.title("Choose files")
     # Размеры GUI приложения
     root.geometry("400x200+{}+{}".format(width, height))
     # Масштабирование
