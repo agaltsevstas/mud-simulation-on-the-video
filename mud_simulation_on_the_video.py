@@ -16,6 +16,8 @@ class Application(tk.Frame):
         tk.Frame.__init__(self, master)
         self.video_path = None
         self.image_path = None
+        self.video_name = None
+        self.image_name = None
         self.label_first = tk.Label(text="missing file", fg="red")
         self.label_first.grid(row=0, column=1, sticky="nsew")
         self.label_second = tk.Label(text="missing file", fg="red")
@@ -41,6 +43,7 @@ class Application(tk.Frame):
                                      command=lambda: self.exit())
         self.button_exit.grid(row=3, column=3, sticky="nsew")
         self.update_clock()
+        self.master.bind('<o>', self.open_file)
         self.master.bind('<Delete>', self.delete_file)
         self.master.bind('<Escape>', self.exit)
 
@@ -55,21 +58,17 @@ class Application(tk.Frame):
                                                            ("FLV files", "*.flv"),
                                                            ("WMV files", "*.wmv")])
 
-        # Проверка пути к xml файла на пустоту и на совпадение ранее загруженного xml файла с таким же именем
+        # Проверка пути к видеофайлу на пустоту
         if len(video_path):
-            """
-            Если загружается xml labeled файл, то он добавляется в начало списка и удаляется ранее добавленный
-            файл.
-            Если загружается xml neuronet файл, то он добавляется в конец списка и удаляется ранее добавленный
-            файл.
-            """
+            # Проверка на совпадение ранее загруженного видеофайла файла с таким же именем
             if self.video_path:
                 self.list_box.delete(0)
             self.list_box.insert(0, video_path)
             self.video_path = video_path
+            self.video_name = os.path.basename(self.video_path)
             print(video_path + " LOADED")
 
-    # Загрузка видео файла
+    # Загрузка изображения
     def add_image(self):
         image_path = filedialog.askopenfilename(initialdir=dir, title="Select IMAGE",
                                                 filetypes=[("ALL files", ' '
@@ -79,13 +78,14 @@ class Application(tk.Frame):
                                                            ("JPEG files", "*.jpeg"),
                                                            ("BMP files", "*.bmp"),
                                                            ("GIF files", "*.gif")])
-        # Проверка пути к xml файла на пустоту и на совпадение ранее загруженного xml файла с таким же именем
+        # Проверка пути к изображению
         if len(image_path):
-            # Проверка на
+            # Проверка на совпадение ранее загруженного изображения с таким же именем
             if self.image_path:
                 self.list_box.delete(tk.END)
             self.list_box.insert(tk.END, image_path)
             self.image_path = image_path
+            self.image_name = os.path.basename(self.image_path)
             print(image_path + " LOADED")
 
     # Открытие файла
@@ -102,17 +102,18 @@ class Application(tk.Frame):
                     if key == 27:
                         break
                     success, frame = cap.read()
-                    cv2.imshow(os.path.basename(self.video_path), frame)
+                    cv2.imshow(self.video_name, frame)
                 cap.release()
                 cv2.destroyAllWindows()
             if self.list_box.get(selection) == self.image_path:
                 print(self.image_path + " OPEN")
                 image = cv2.imread(self.image_path)
-                cv2.imshow(os.path.basename(self.image_path), image)
+                cv2.imshow(self.image_name, image)
                 key = cv2.waitKey(0)
                 if key == 27:
                     cv2.destroyAllWindows()
         except:
+            messagebox.showerror("No file selected", "Select a file from the list")
             print("File cannot be opened!")
 
     # Удаление файла(ов) при нажатии или выделении через shift
@@ -128,150 +129,143 @@ class Application(tk.Frame):
             self.list_box.delete(i)
             print(filepath + " DELETED")
 
-    # Удаление файла(ов) при нажатии или выделении через shift
+    # Симуляция грязи на видеофайле в режиме оннлайн
     def simulation(self, event=None):
+        # Путь к видеофайлу
         path = os.path.dirname(self.video_path)
-        name = os.path.splitext(os.path.basename(self.video_path))[0]
-        ext = os.path.splitext(os.path.basename(self.video_path))[1]
-        file_video = path + "/" + name + "_new" + ext
-        file_data = path + "/" + "data" + ".txt"
+        # Путь к новому видео
+        mud_video_path = path + "/" + "mud_" + self.video_name
+        # Название нового видео
+        mud_video_name = "mud_" + self.video_name
+        # Текстовый файл, в котором будут храниться данные
+        data_file = path + "/" + "data" + ".txt"
         c = 64
-        d = 128
-        increase = 5
-        dirt_masking = False
-        record = False
-        click = True
-        count_click = 0
+        lighting = 128
+        step = 5
+        is_mud_masking = False
+        is_video_recording = False
+        is_record_to_file = True
+        record_counter = 0
         cap = cv2.VideoCapture(self.video_path)
-        is_frame, image = cap.read()
-        width, height = image.shape[:2]
-        overlay = cv2.imread(self.image_path)
-        overlay = cv2.resize(overlay, (height, width))
-        overlay = cv2.GaussianBlur(overlay, (0, 0), 1.8)
-        overlay_copy = overlay.copy()
-        a = np.min(overlay)
-        b = np.max(overlay)
+        # Чтение кадра из видеофайла
+        is_frame, frame = cap.read()
+        # Ширина и высота кадра
+        frame_width, frame_height = frame.shape[:2]
+        # Подготовка изображения к наложению на видеофайл
+        image_overlay = cv2.imread(self.image_path)
+        image_overlay = cv2.resize(image_overlay, (frame_height, frame_width))
+        # Размытие наложенного изображения по Гауссиану
+        image_overlay = cv2.GaussianBlur(image_overlay, (0, 0), 1.8)
+        image_overlay_copy = image_overlay.copy()
+        a = np.min(image_overlay)
+        b = np.max(image_overlay)
         threshold = b
+        # Кодек видео
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        video = cv2.VideoWriter(file_video, fourcc, cap.get(cv2.CAP_PROP_FPS), (height, width))
-        cv2.namedWindow(name, cv2.WINDOW_AUTOSIZE)
-        cv2.moveWindow(name, 0, 0)
+        video = cv2.VideoWriter(mud_video_path, fourcc, cap.get(cv2.CAP_PROP_FPS), (frame_height, frame_width))
+        cv2.namedWindow(mud_video_name, cv2.WINDOW_AUTOSIZE)
+        # Сделать окно по центру экрана
+        cv2.moveWindow(mud_video_name, 0, 0)
+        # Проверка на открытие видеофайла
         if not is_frame:
-            print("video not found")
-        dt = int(1/cap.get(cv2.CAP_PROP_FPS)*1000)
+            print("Video not found")
+        dt = int(1 / cap.get(cv2.CAP_PROP_FPS) * 1000)
         while True:
             modify = False
             key = cv2.waitKey(dt)
             if key == ord('r'):
-                ~click
-                if click:
+                ~is_record_to_file
+                if is_record_to_file:
                     try:
                         count = 0
                         data_from_file = np.uint8([])
-                        file = open(file_data, "r")
-                        if os.stat(file_data).st_size:
+                        file = open(data_file, "r")
+                        if os.stat(data_file).st_size:
                             for line in file:
                                 if not line == "\n":
                                     data_from_file = np.append(data_from_file, np.array([int(s) for s in line.split()
                                                                                          if s.isdigit()]))
                                     print("pressed R, Read from {}, threshold = {data[0]}, c = {data[1]}, d = {data[2]}"
-                                          .format(file_data, data=data_from_file))
+                                          .format(data_file, data=data_from_file))
                                     count += 3
                             file.close()
-                            click = False
+                            is_record_to_file = False
                         else:
                             print("FILE is EMPTY!")
                     except IOError:
                         print("Could not OPEN FILE!")
                 else:
-                    threshold = data_from_file[count_click]
-                    c = data_from_file[1+count_click]
-                    d = data_from_file[2+count_click]
+                    threshold = data_from_file[record_counter]
+                    c = data_from_file[1 + record_counter]
+                    d = data_from_file[2 + record_counter]
                     print("pressed double R, read from DATA, threshold = {}, c = {}, d = {}".format(threshold, c, d))
-                    count_click += 3
-                    if count_click >= len(data_from_file):
-                        count_click = 0
+                    record_counter += 3
+                    if record_counter >= len(data_from_file):
+                        record_counter = 0
+            # Наложение / удаление грязи
             if key == ord('x'):
-                dirt_masking ^= 1
-                if dirt_masking:
-                    print("pressed x, DIRTY")
+                is_mud_masking ^= 1
+                if is_mud_masking:
+                    print("pressed x, MUD")
                 else:
                     print("pressed x, CLEAN")
+            # Выход
             if key == 27:
                 print("pressed BREAK")
                 break
+            # Пауза
             if key == 32:
                 print("pressed PAUSE")
                 key = cv2.waitKey(0)
-            if key == ord('w') and threshold <= 255-increase:
-                threshold += increase
+            if key == ord('w') and threshold <= 255 - step:
+                threshold += step
                 print("pressed w, threshold = ", threshold)
-            if key == ord('s') and threshold >= 0+increase:
-                threshold -= increase
+            if key == ord('s') and threshold >= 0 + step:
+                threshold -= step
                 print("pressed s, threshold =", threshold)
-            if key == ord('d') and d <= 255 - increase:
+            if key == ord('d') and lighting <= 255 - step:
                 modify = True
-                d += increase
-                print("pressed d, d =", d)
-            if key == ord('a') and d - increase > c:
+                lighting += step
+                print("pressed d, lighting =", lighting)
+            if key == ord('a') and lighting - step > c:
                 modify = True
-                d -= increase
-                print("pressed a, d = ", d)
-            if key == ord('g') and c + increase < d:
+                lighting -= step
+                print("pressed a, lighting = ", lighting)
+            if key == ord('g') and c + step < lighting:
                 modify = True
-                c += increase
+                c += step
                 print("pressed g, c =", c)
-            if key == ord('f') and c >= 0 + increase:
+            if key == ord('f') and c >= 0 + step:
                 modify = True
-                c -= increase
+                c -= step
                 print("pressed f, c = ", c)
             if modify:
-                overlay = ((d - c) / (b - a)) * (overlay_copy - a) + c
-                overlay = overlay.astype(np.uint8)
-            if dirt_masking:
-                # image32 = image.astype(np.float32)
-                #rows,cols,channels = overlay.shape
-                # roi = output[0:rows, 0:cols ]
-                # image = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
-                ret, mask = cv2.threshold(overlay, threshold, threshold, cv2.THRESH_TRUNC)
-                # mask = np.array(mask, dtype=np.float32)
+                image_overlay = ((lighting - c) / (b - a)) * (image_overlay_copy - a) + c
+                image_overlay = image_overlay.astype(np.uint8)
+            if is_mud_masking:
+                ret, mask = cv2.threshold(image_overlay, threshold, threshold, cv2.THRESH_TRUNC)
                 mask = threshold - mask
-                # mask = np.array(mask, dtype=np.uint8)
-                # cv2.imshow("0" , roi)
-                # cv2.waitKey(0)
-                # mask_inv = cv2.bitwise_not(mask)
-                # roi = np.array(roi, dtype=np.float32)
-                # overlay = np.array(overlay, dtype=np.float32)
-                # img1_bg = cv2.bitwise_and(roi,roi,mask = mask_inv)
-                # img2_fg = cv2.bitwise_and(overlay,overlay,mask = mask)
-                # img2_fg -= threshold
                 dst = cv2.subtract(image, mask)
-                # dst = image - mask
-                # np.clip(dst, 0,255, out=dst)
-                # dst = dst.astype('uint8')
-                # dst = np.array(dst, dtype=np.uint8)
-                # output[0:rows, 0:cols ] = dst
-                # cv2.addWeighted(output, 0.5, image, 0.5, 0, image)
             else:
                 dst = image
-            if record:
+            if is_video_recording:
                 video.write(dst)
-            cv2.imshow("0", dst)
+            cv2.imshow(mud_video_name, dst)
             if key == 13:
-                record ^= 1
-                if record:
+                is_video_recording ^= 1
+                if is_video_recording:
                     video.write(dst)
-                    print("pressed ENTER, video recording to {}".format(file_video))
+                    print("pressed ENTER, video recording to {}".format(mud_video_path))
                 else:
                     video.release()
-                    data_to_file = np.uint8([threshold, c, d])
-                    file = open(file_data, "a")
+                    data_to_file = np.uint8([threshold, c, lighting])
+                    file = open(data_file, "a")
                     file.write(' '.join(["{}".format(item) for item in data_to_file]))
                     file.write("\n")
                     file.close()
                     print("pressed ENTER, video stop recorded; data recorded to {}, parameters: threshold = {data[0]}, "
-                          "c = {data[1]}, d = {data[2]}".format(file_data, data=data_to_file))
-                    click = True
+                          "c = {data[1]}, d = {data[2]}".format(data_file, data=data_to_file))
+                    is_record_to_file = True
             is_frame, image = cap.read()
             if not is_frame:
                 cap.release()
@@ -302,8 +296,15 @@ class Application(tk.Frame):
         else:
             self.label_second.config(text="missing file", fg="red")
 
+        if self.list_box.size() >= 1:
+            self.button_open_file.config(state=tk.ACTIVE, bg="#c0c0c0")
+            self.master.bind('<o>', self.open_file)
+        else:
+            self.button_open_file.config(state=tk.DISABLED, bg="white")
+            self.master.unbind('<o>')
+
         if self.list_box.size() == 2:
-            self.button_simulation.config(state=tk.ACTIVE, bg="#c0c0c0")
+            self.button_simulation.config(state=tk.ACTIVE, bg="#ffb841")
             self.master.bind('<s>', self.simulation)
         else:
             self.button_simulation.config(state=tk.DISABLED, bg="white")
