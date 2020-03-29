@@ -18,6 +18,7 @@ class Application(tk.Frame):
         self.image_path = None
         self.video_name = None
         self.image_name = None
+        self.data = None
         self.label_first = tk.Label(text="missing file", fg="red")
         self.label_first.grid(row=0, column=1, sticky="nsew")
         self.label_second = tk.Label(text="missing file", fg="red")
@@ -131,6 +132,21 @@ class Application(tk.Frame):
             self.list_box.delete(i)
             print(filepath + " deleted")
 
+    def read_data(self, data_file):
+        self.data = np.uint8([])
+        try:
+            file = open(data_file, "r")
+            # Чтение данных
+            if os.stat(data_file).st_size:
+                for line in file:
+                    if not line == "\n":
+                        self.data = np.append(self.data, np.array([int(s) for s in line.split() if s.isdigit()]))
+                file.close()
+            else:
+                print("File is empty!")
+        except IOError:
+            print("Could not open file!")
+
     # Симуляция грязи на видеофайле в режиме оннлайн
     def simulation(self, event=None):
         # Путь к видеофайлу
@@ -141,12 +157,12 @@ class Application(tk.Frame):
         mud_video_name = "mud_" + self.video_name
         # Текстовый файл, в котором будут храниться данные
         data_file = path + "/" + "data" + ".txt"
+        self.read_data(data_file)
         step = 5
-        brightness_video = 128
-        brightness_mud = 64
+        video_brightness = 128
+        mud_brightness = 64
         do_mud_masking = False
         can_video_recording = False
-        can_record_to_file = True
         do_hide_text = False
         record_counter = 0
         cap = cv2.VideoCapture(self.video_path)
@@ -179,43 +195,24 @@ class Application(tk.Frame):
             modify = False
             key = cv2.waitKey(dt)
             # Загрузка данных из текстового файла
-            if key == ord('r'):
-                ~can_record_to_file
-                if can_record_to_file:
-                    try:
-                        data_from_file = np.uint8([])
-                        file = open(data_file, "r")
-                        # Чтение данных
-                        if os.stat(data_file).st_size:
-                            for line in file:
-                                if not line == "\n":
-                                    data = np.append(data, np.array([int(s) for s in line.split() if s.isdigit()]))
-                                    print("Pressed R, Read from {}, threshold = {data[0]}, c = {data[1]}, d = {data[2]}"
-                                          .format(data_file, data=data))
-                            file.close()
-                            can_record_to_file = False
-                        else:
-                            print("File is empty!")
-                    except IOError:
-                        print("Could not open file!")
-                else:
-                    threshold = data[record_counter]
-                    brightness_mud = data[1 + record_counter]
-                    brightness_video = data[2 + record_counter]
-                    print("Pressed double R, read from data, threshold = {}, c = {}, d = {}"
-                          .format(threshold, brightness_mud, brightness_video))
-                    record_counter += 3
-                    if record_counter >= len(data):
-                        record_counter = 0
+            if key == 13:
+                threshold = self.data[record_counter]
+                mud_brightness = self.data[1 + record_counter]
+                video_brightness = self.data[2 + record_counter]
+                print("Pressed ENTER, Read from {}, threshold = {}, "
+                      "c = {}, d = {}"
+                      .format(data_file, threshold, mud_brightness, video_brightness))
+                record_counter += 3
+                if record_counter >= len(self.data):
+                    record_counter = 0
+                modify = True
+            # Спрятать / показать надпись на видео
             if key == ord('h'):
                 do_hide_text ^= 1
-                if do_mud_masking:
-                    do_mud_masking = True
-                    print("Pressed H, the text is visible")
-                else:
-                    do_mud_masking = False
+                if do_hide_text:
                     print("Pressed H, the text is hidden")
-
+                else:
+                    print("Pressed H, the text is visible")
             # Наложение / удаление грязи
             if key == ord('x'):
                 do_mud_masking ^= 1
@@ -240,29 +237,29 @@ class Application(tk.Frame):
                 threshold -= step
                 print("Pressed S, threshold =", threshold)
             # Увеличение яркости видео
-            if key == ord('d') and brightness_video <= 255 - step:
+            if key == ord('d') and video_brightness <= 255 - step:
+                video_brightness += step
                 modify = True
-                brightness_video += step
-                print("Pressed D, brightness video =", brightness_video)
+                print("Pressed D, video brightness =", video_brightness)
             # Уменьшение яркости видео
-            if key == ord('a') and brightness_video - step > brightness_mud:
+            if key == ord('a') and video_brightness - step > mud_brightness:
+                video_brightness -= step
                 modify = True
-                brightness_video -= step
-                print("Pressed A, brightness video = ", brightness_video)
+                print("Pressed A, video brightness = ", video_brightness)
             # Увеличение яркости грязи
-            if key == ord('g') and brightness_mud + step < brightness_video:
+            if key == ord('g') and mud_brightness + step < video_brightness:
+                mud_brightness += step
                 modify = True
-                brightness_mud += step
-                print("Pressed G, brightness mud = ", brightness_mud)
+                print("Pressed G, mud brightness = ", mud_brightness)
             # Уменьшение яркости грязи
-            if key == ord('f') and brightness_mud >= 0 + step:
+            if key == ord('f') and mud_brightness >= 0 + step:
+                mud_brightness -= step
                 modify = True
-                brightness_mud -= step
-                print("Pressed F, brightness mud = ", brightness_mud)
+                print("Pressed F, mud brightness = ", mud_brightness)
             # Изменение кадра
             if modify:
-                image_overlay = ((brightness_video - brightness_mud) / (max_pixel - min_pixel)) * \
-                                (image_overlay_copy - min_pixel) + brightness_mud
+                image_overlay = ((video_brightness - mud_brightness) / (max_pixel - min_pixel)) * \
+                                (image_overlay_copy - min_pixel) + mud_brightness
                 image_overlay = image_overlay.astype(np.uint8)
             # Наложение маски на изображение
             if do_mud_masking:
@@ -275,37 +272,41 @@ class Application(tk.Frame):
             # Запись видео
             if can_video_recording:
                 video.write(image)
+                image = cv2.circle(image, (30, 30), 10, (0, 0, 255), -1)
+            # Надпись на видео
             if not do_hide_text:
-                # Фон
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                # org
-                org = (frame_width - 100, frame_height - 100)
-                # fontScale
-                fontScale = 1
-                # Blue color in BGR
-                color = (255, 0, 0)
-                # Line thickness of 2 px
-                thickness = 2
-                # Using cv2.putText() method
-                image = cv2.putText(image, 'OpenCV', org, font, fontScale, color, thickness, cv2.LINE_AA)
+                text = ["key H-hide text", "key ESC-exit", "key SPACE-pause",
+                        "key R-recording/stop recording video",
+                        "key ENTER-write/read data",
+                        "keys W/S-increase/decrease in brightness threshold",
+                        "keys D/A-increase/decrease video brightness",
+                        "keys G/F-increase/decrease mud brightness"]
+                # Расположение
+                x = frame_width - 420
+                y = frame_height - 480
+                # Вывод текста на изображение
+                for i in text:
+                    image = cv2.putText(image, i, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (66, 170, 255), 2, cv2.LINE_4)
+                    y += 25
             cv2.imshow(mud_video_name, image)
             # Запись / остановка записи видео
-            if key == 13:
+            if key == ord('r'):
                 can_video_recording ^= 1
                 if can_video_recording:
                     video.write(image)
-                    print("Pressed ENTER, video recording to {}".format(mud_video_path))
+                    print("Pressed R, video recording to {}".format(mud_video_path))
                 else:
                     video.release()
-                    data = np.uint8([threshold, brightness_mud, brightness_video])
+                    data = np.uint8([threshold, mud_brightness, video_brightness])
                     file = open(data_file, "a")
                     file.write(' '.join(["{}".format(item) for item in data]))
                     file.write("\n")
                     file.close()
-                    print("Pressed ENTER, video stop recorded; data recorded to {}, parameters: threshold = {data[0]}, "
+                    self.read_data(data_file)
+                    print("Pressed R, video stop recorded; data recorded to {}, parameters: threshold = {data[0]}, "
                           "c = {data[1]}, d = {data[2]}".format(data_file, data=data))
-                    can_record_to_file = True
             is_frame, frame = cap.read()
+            # Остановка видео
             if not is_frame:
                 cap.release()
                 cap.open(self.video_path)
