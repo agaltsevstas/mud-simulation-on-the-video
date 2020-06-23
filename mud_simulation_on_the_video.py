@@ -278,12 +278,13 @@ class Application(tk.Frame):
                 text = ["key H-hide text", "key ESC-exit", "key SPACE-pause",
                         "key R-recording/stop recording video",
                         "key ENTER-write/read data",
+			"key X-add/delete mud",
                         "keys W/S-increase/decrease in brightness threshold",
                         "keys D/A-increase/decrease video brightness",
                         "keys G/F-increase/decrease mud brightness"]
                 # Расположение
                 x = frame_width - 420
-                y = frame_height - 480
+                y = frame_height - 500
                 # Вывод текста на изображение
                 for i in text:
                     image = cv2.putText(image, i, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (66, 170, 255), 2, cv2.LINE_4)
