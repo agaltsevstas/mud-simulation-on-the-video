@@ -29,7 +29,7 @@ python3 mud_simulation_on_the_video.py
 <p align="center">
 <img src="images/2.png" align="center"/></p>
 
-После нажатия кнопки "simulation" воспроизводится видео. Справа на видео 
+После нажатия кнопки "simulation" воспроизводится видео. Справа на видео есть подсказки.
 <p align="center">
 <img src="images/3.png" align="center"/></p>
 
