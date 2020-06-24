@@ -33,6 +33,7 @@ python3 mud_simulation_on_the_video.py
 <p align="center">
 <img src="images/3.png" align="center"/></p>
 Подсказки на клавиши:
+
 * H - Спрятать / показать надпись на видео
 * ESC - Выход из программы
 * SPACE - Пауза
