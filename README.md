@@ -12,6 +12,12 @@ GUI приложение для симуляции грязи на видео
   * cv2
   * tkinter
 
+### Загрузка
+```
+git clone https://gitlab.com/agaltsev.stas/mud-simulation-on-the-video.git
+cd mud-simulation-on-the-video
+```
+
 ### Запуск
 ```
 python3 mud_simulation_on_the_video.py
